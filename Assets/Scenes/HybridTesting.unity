@@ -282,7 +282,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 395fb85bda347494da5dc97f8c61db92, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  winMessage: Escaped!
+  winMessage: Escaped
+  winTextObject: {fileID: 500769564}
 --- !u!65 &249597533
 BoxCollider:
   m_ObjectHideFlags: 0

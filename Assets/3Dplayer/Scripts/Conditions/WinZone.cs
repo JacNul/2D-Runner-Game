@@ -3,34 +3,37 @@ using System.Collections.Generic;
 using UnityEngine;
 
 
+using TMPro; // Needed if using TextMeshPro
+
 public class WinZone : MonoBehaviour
 {
     [Header("Win Settings")]
-    [SerializeField] private string winMessage = "You Win!"; // Message shown in console
+    [SerializeField] private string winMessage = "You Win!";
+    [SerializeField] private GameObject winTextObject; // Drag UI Text here in Inspector
+
+    private void Start()
+    {
+        if (winTextObject != null)
+            winTextObject.SetActive(false); // Hide at start
+    }
 
     private void OnTriggerEnter(Collider other)
     {
-        // Debug log to check trigger
-        Debug.Log("Trigger entered by: " + other.name);
-
         if (other.CompareTag("Player"))
         {
             Debug.Log(winMessage);
 
-            // Stop player movement
-            PlayerMovement3D playerMovement = other.GetComponent<PlayerMovement3D>();
-            if (playerMovement != null)
+            PlayerMovement3D player = other.GetComponent<PlayerMovement3D>();
+            if (player != null)
             {
-                playerMovement.enabled = false;
+                player.TriggerWin();
             }
 
-            // Stop any ongoing physics movement
-            Rigidbody rb = other.GetComponent<Rigidbody>();
-            if (rb != null)
+            if (winTextObject != null)
             {
-                rb.velocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-                rb.isKinematic = true;
+                winTextObject.SetActive(true);
+                var text = winTextObject.GetComponent<TMP_Text>();
+                if (text != null) text.text = winMessage;
             }
         }
     }

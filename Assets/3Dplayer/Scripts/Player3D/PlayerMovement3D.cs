@@ -27,6 +27,9 @@ public class PlayerMovement3D : MonoBehaviour
     private bool isGrounded;
     private float moveX;
 
+    // --- Win condition ---
+    public bool HasWon { get; private set; } = false;
+
     private void Start()
     {
         rb = GetComponent<Rigidbody>();
@@ -35,6 +38,7 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void Update()
     {
+        if (HasWon) return; // Disable controls when player has won
         if (visuals == null || animator == null || groundCheck == null) return;
 
         // --- Input ---
@@ -66,6 +70,8 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (HasWon) return; // Prevent physics movement when won
+
         // --- Horizontal movement ---
         Vector3 velocity = rb.velocity;
         velocity.x = moveX * speed;
@@ -81,6 +87,12 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void UpdateAnimations()
     {
+        if (HasWon)
+        {
+            animator.Play("Win"); // Force win animation
+            return;
+        }
+
         if (isGrounded)
         {
             animator.SetBool("isGrounded", true);
@@ -99,6 +111,19 @@ public class PlayerMovement3D : MonoBehaviour
         }
 
         animator.SetFloat("Speed", Mathf.Abs(moveX));
+    }
+
+    public void TriggerWin()
+    {
+        HasWon = true;
+
+        // Stop physics immediately
+        rb.velocity = Vector3.zero;
+        rb.isKinematic = true;
+
+        // Force animation
+        if (animator != null)
+            animator.Play("Win");
     }
 
     private void OnDrawGizmosSelected()

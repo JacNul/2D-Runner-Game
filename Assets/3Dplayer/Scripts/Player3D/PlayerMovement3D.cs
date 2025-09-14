@@ -27,8 +27,9 @@ public class PlayerMovement3D : MonoBehaviour
     private bool isGrounded;
     private float moveX;
 
-    // --- Win condition ---
+    // --- Win/Lose states ---
     public bool HasWon { get; private set; } = false;
+    public bool HasLost { get; private set; } = false;
 
     private void Start()
     {
@@ -38,7 +39,7 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void Update()
     {
-        if (HasWon) return; // Disable controls when player has won
+        if (HasWon || HasLost) return; // Stop controls if game over
         if (visuals == null || animator == null || groundCheck == null) return;
 
         // --- Input ---
@@ -51,6 +52,7 @@ public class PlayerMovement3D : MonoBehaviour
         if (Input.GetButtonDown("Jump") && isGrounded)
         {
             rb.velocity = new Vector3(rb.velocity.x, jumpForce, 0);
+
             if (jumpAudio != null)
             {
                 jumpAudio.pitch = Random.Range(0.95f, 1.05f);
@@ -70,12 +72,12 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (HasWon) return; // Prevent physics movement when won
+        if (HasWon || HasLost) return; // Freeze physics when game ends
 
         // --- Horizontal movement ---
         Vector3 velocity = rb.velocity;
         velocity.x = moveX * speed;
-        velocity.z = 0;
+        velocity.z = 0; // lock to 2D plane
         rb.velocity = velocity;
 
         // --- Custom gravity ---
@@ -89,7 +91,13 @@ public class PlayerMovement3D : MonoBehaviour
     {
         if (HasWon)
         {
-            animator.Play("Win"); // Force win animation
+            animator.Play("Win");
+            return;
+        }
+
+        if (HasLost)
+        {
+            animator.Play("Idle"); // You can replace with a Lose animation later
             return;
         }
 
@@ -113,17 +121,21 @@ public class PlayerMovement3D : MonoBehaviour
         animator.SetFloat("Speed", Mathf.Abs(moveX));
     }
 
+    // --- Trigger methods ---
     public void TriggerWin()
     {
         HasWon = true;
-
-        // Stop physics immediately
         rb.velocity = Vector3.zero;
         rb.isKinematic = true;
+        animator.SetBool("HasWon", true);
+    }
 
-        // Force animation
-        if (animator != null)
-            animator.Play("Win");
+    public void TriggerLose()
+    {
+        HasLost = true;
+        rb.velocity = Vector3.zero;
+        rb.isKinematic = true;
+        animator.SetBool("HasLost", true);
     }
 
     private void OnDrawGizmosSelected()

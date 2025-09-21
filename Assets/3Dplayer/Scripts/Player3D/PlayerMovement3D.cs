@@ -18,14 +18,32 @@ public class PlayerMovement3D : MonoBehaviour
     [SerializeField] private float groundDistance = 0.4f;
     [SerializeField] private LayerMask groundMask;
 
+    [Header("Wall Jump Settings")]
+    [SerializeField] private float wallCheckDistance = 0.5f;
+    [SerializeField] private LayerMask wallMask;
+    [SerializeField] private float wallJumpForce = 7f;
+    [SerializeField] private Vector2 wallJumpDirection = new Vector2(1.5f, 1f);
+    [SerializeField] private float wallSlideSpeed = 2f;
+    [SerializeField] private float wallJumpInputBuffer = 0.2f;
+
     [Header("References")]
     [SerializeField] private Transform visuals;
     [SerializeField] private Animator animator;
     [SerializeField] private AudioSource jumpAudio;
 
+    [Header("Particles")]
+    [SerializeField] private ParticleSystem wallSlideParticles;
+    [SerializeField] private Vector3 wallSlideOffset = new Vector3(0.5f, -0.5f, 0f);
+
     private Rigidbody rb;
     private bool isGrounded;
     private float moveX;
+
+    // Wall jump tracking
+    private bool isTouchingWall;
+    private bool wallJumped;
+    private float jumpBufferTime;
+    private Transform lastWall;
 
     // --- Win/Lose states ---
     public bool HasWon { get; private set; } = false;
@@ -39,24 +57,60 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void Update()
     {
-        if (HasWon || HasLost) return; // Stop controls if game over
+        if (HasWon || HasLost) return;
         if (visuals == null || animator == null || groundCheck == null) return;
 
-        // --- Input ---
         moveX = Input.GetAxisRaw("Horizontal");
+
+        // --- Jump input buffer ---
+        if (Input.GetButtonDown("Jump"))
+            jumpBufferTime = wallJumpInputBuffer;
+        else
+            jumpBufferTime -= Time.deltaTime;
 
         // --- Ground check ---
         isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
 
-        // --- Jump ---
-        if (Input.GetButtonDown("Jump") && isGrounded)
-        {
-            rb.velocity = new Vector3(rb.velocity.x, jumpForce, 0);
+        // --- Wall check ---
+        RaycastHit hitRight, hitLeft;
+        bool hitWallRight = Physics.Raycast(transform.position, Vector3.right, out hitRight, wallCheckDistance, wallMask);
+        bool hitWallLeft = Physics.Raycast(transform.position, Vector3.left, out hitLeft, wallCheckDistance, wallMask);
+        isTouchingWall = hitWallRight || hitWallLeft;
 
-            if (jumpAudio != null)
+        Transform currentWall = null;
+        if (hitWallRight) currentWall = hitRight.collider.transform;
+        else if (hitWallLeft) currentWall = hitLeft.collider.transform;
+
+        // Reset wall jump if grounded or touching a new wall
+        if (isGrounded)
+            wallJumped = false;
+        else if (currentWall != null && currentWall != lastWall)
+            wallJumped = false;
+
+        lastWall = currentWall;
+
+        // --- Handle jumps ---
+        if (jumpBufferTime > 0)
+        {
+            if (isGrounded)
             {
-                jumpAudio.pitch = Random.Range(0.95f, 1.05f);
-                jumpAudio.Play();
+                rb.velocity = new Vector3(rb.velocity.x, jumpForce, 0);
+                PlayJumpSound();
+                jumpBufferTime = 0;
+            }
+            else if (isTouchingWall && !wallJumped)
+            {
+                wallJumped = true;
+                jumpBufferTime = 0;
+
+                float direction = hitWallRight ? -1 : 1;
+
+                rb.velocity = new Vector3(direction * wallJumpDirection.x * wallJumpForce,
+                                          wallJumpDirection.y * wallJumpForce, 0);
+
+                visuals.localScale = new Vector3(direction, 1, 1);
+
+                PlayJumpSound();
             }
         }
 
@@ -66,25 +120,55 @@ public class PlayerMovement3D : MonoBehaviour
         else if (moveX < -0.01f)
             visuals.localScale = new Vector3(-1, 1, 1);
 
-        // --- Update animations ---
         UpdateAnimations();
     }
 
     private void FixedUpdate()
     {
-        if (HasWon || HasLost) return; // Freeze physics when game ends
+        if (HasWon || HasLost) return;
+
+        Vector3 velocity = rb.velocity;
 
         // --- Horizontal movement ---
-        Vector3 velocity = rb.velocity;
         velocity.x = moveX * speed;
-        velocity.z = 0; // lock to 2D plane
-        rb.velocity = velocity;
+        velocity.z = 0;
+
+        // --- Wall slide ---
+        if (!isGrounded && isTouchingWall && rb.velocity.y < 0 && !wallJumped)
+        {
+            velocity.y = -wallSlideSpeed;
+
+            if (wallSlideParticles != null)
+            {
+                if (!wallSlideParticles.isPlaying)
+                    wallSlideParticles.Play();
+
+                // Determine wall side
+                float direction = Physics.Raycast(transform.position, Vector3.right, wallCheckDistance, wallMask) ? 1 : -1;
+
+                // Update particle position relative to player
+                wallSlideParticles.transform.localPosition = new Vector3(direction * Mathf.Abs(wallSlideOffset.x),
+                                                                        wallSlideOffset.y,
+                                                                        wallSlideOffset.z);
+
+                // Flip particle rotation to face the correct direction
+                var main = wallSlideParticles.main;
+                main.startRotationY = direction == 1 ? 0f : Mathf.PI; // rotate 180° if left wall
+            }
+        }
+        else
+        {
+            if (wallSlideParticles != null && wallSlideParticles.isPlaying)
+                wallSlideParticles.Stop();
+        }
 
         // --- Custom gravity ---
-        if (rb.velocity.y < 0)
-            rb.velocity += Vector3.up * Physics.gravity.y * (fallMultiplier - 1) * Time.fixedDeltaTime;
-        else if (rb.velocity.y > 0 && !Input.GetButton("Jump"))
-            rb.velocity += Vector3.up * Physics.gravity.y * (gravityMultiplier - 1) * Time.fixedDeltaTime;
+        if (velocity.y < 0)
+            velocity += Vector3.up * Physics.gravity.y * (fallMultiplier - 1) * Time.fixedDeltaTime;
+        else if (velocity.y > 0 && !Input.GetButton("Jump"))
+            velocity += Vector3.up * Physics.gravity.y * (gravityMultiplier - 1) * Time.fixedDeltaTime;
+
+        rb.velocity = velocity;
     }
 
     private void UpdateAnimations()
@@ -97,7 +181,7 @@ public class PlayerMovement3D : MonoBehaviour
 
         if (HasLost)
         {
-            animator.Play("Idle"); // You can replace with a Lose animation later
+            animator.Play("Idle");
             return;
         }
 
@@ -121,7 +205,15 @@ public class PlayerMovement3D : MonoBehaviour
         animator.SetFloat("Speed", Mathf.Abs(moveX));
     }
 
-    // --- Trigger methods ---
+    private void PlayJumpSound()
+    {
+        if (jumpAudio != null)
+        {
+            jumpAudio.pitch = Random.Range(0.95f, 1.05f);
+            jumpAudio.Play();
+        }
+    }
+
     public void TriggerWin()
     {
         HasWon = true;
@@ -144,6 +236,13 @@ public class PlayerMovement3D : MonoBehaviour
         {
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(groundCheck.position, groundDistance);
+        }
+
+        if (wallCheckDistance > 0)
+        {
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawLine(transform.position, transform.position + Vector3.right * wallCheckDistance);
+            Gizmos.DrawLine(transform.position, transform.position + Vector3.left * wallCheckDistance);
         }
     }
 }
